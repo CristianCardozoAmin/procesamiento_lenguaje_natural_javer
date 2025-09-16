@@ -205,3 +205,4 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+taller_ir/data/input/entrevistas_all_2023-03-21_14-24_05.json
