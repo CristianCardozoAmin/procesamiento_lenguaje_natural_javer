@@ -1,0 +1,311 @@
+\documentclass[12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage{enumitem}
+\usepackage{csquotes}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{listingsutf8} % soporte UTF-8 para listings
+\usepackage{xcolor}
+\usepackage{float}
+\usepackage{longtable}   % tablas que se parten en varias páginas
+\usepackage{array}
+\usepackage{geometry}   % opcional, para ajustar márgenes
+
+% Bibliografía moderna
+\usepackage[backend=biber,style=numeric,sorting=nyt]{biblatex}
+\addbibresource{referencias.bib}
+
+
+%Autores
+\title{Recuperación de Información Aplicada a Entrevistas y Libros de la Comisión de la Verdad}
+
+%Titulo
+\author{
+Aponte Duque, Juan \\ Pontificia Universidad Javeriana \\ \texttt{aponte.juan@javeriana.edu.co}
+\and
+Cardozo Amin, Cristian \\ Pontificia Universidad Javeriana \\ \texttt{cristiancardozo@javeriana.edu.co}
+\and
+Triana Ocampo, Benkos \\ Pontificia Universidad Javeriana \\ \texttt{b.triana@javeriana.edu.co}
+}
+
+%%Fecha & Inicio 
+\date{}
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Este trabajo busca analizar y comparar textos de entrevistas y libros para encontrar relaciones entre ellos. Primero se estudian las características de los textos, como su longitud, vocabulario y términos más usados, y se crean nubes de palabras y gráficos. Luego se desarrolla un modelo de búsqueda con TF-IDF para relacionar entrevistas y libros. La relevancia de los resultados se evalúa con las métricas Rocchio y Okapi BM25. Finalmente, se presentan comparaciones en mapas de calor y un informe con los hallazgo.
+\end{abstract}
+
+\section{Datos}
+Partimos de dos fuentes principales: los libros publicados por la Comisión de la Verdad y las entrevistas realizadas a participantes, víctimas o victimarios del conflicto armado en Colombia.  
+En este caso, nos centramos en el libro \textit{Mi cuerpo es la verdad}, que aborda de manera especial cómo el conflicto afectó a las mujeres y a la comunidad LGBTIQ+.
+
+\section{Extracción y Preparación del Corpus}
+
+\subsection{Extracción secciones, testimonios y contenidos}
+
+\subsubsection{Extracción de contenido del PDF}
+
+La extracción del contenido se realizó con la librería \texttt{PyMuPDF}.  
+El proceso comenzó en la página 37 para evitar incluir el índice, los títulos iniciales u otros elementos no relevantes.  
+
+Después, se normalizó el texto corrigiendo los saltos de línea, unificando espacios y dejando el contenido en el formato más limpio posible.  
+
+Para identificar las secciones, se emplearon expresiones regulares tolerantes a mayúsculas y minúsculas, a múltiples espacios y a distintos separadores ``:''.  
+Estas expresiones buscaron las anclas (títulos) definidas en un \textit{schema} jerárquico, que también permitía establecer límites de corte (\_end\_before) y fronteras adicionales (\_boundaries).  
+
+Con las posiciones de cada ancla, se delimitó cada bloque de contenido como el texto comprendido entre una subsección y la siguiente, eliminando el encabezado y aplicando los cortes internos definidos.  
+
+Finalmente, se ensambló un \texttt{DataFrame} ordenado de acuerdo con el \textit{schema}, con las columnas: \texttt{[seccion, seccion\_principal, subseccion, contenido]}.
+
+\subsubsection{Extracción de contenido de las entrevistas}
+
+La extracción del contenido de las entrevistas en formato \texttt{JSON} resultó más compleja que la de los libros, 
+pues aunque las entrevistas estaban delimitadas, su formato presentaba numerosos caracteres especiales y metadatos.  
+Por ejemplo:
+
+\begin{quote}
+\scriptsize
+\texttt{"001-VI-00008\textbackslash nTEST:\u00a0 Bajo la apariencia de una democracia formal, en Colombia se viv\u00eda \textbackslash n
+un r\u00e9gimen de terror: servicios de inteligencia estatales \u00a0[INTERRUP]\textbackslash n
+ENT: \u00bfEstamos hablando...? \u00bfA partir de qu\u00e9 \u00e9poca estamos hablando?\textbackslash n
+\textbackslash nTEST: Estamos hablando ya a partir de 1985."}
+\end{quote}
+
+\paragraph{Procedimiento de limpieza}
+\begin{enumerate}
+    \item \textbf{Normalización inicial}: unificación de la codificación Unicode, espacios, saltos de línea y tabulaciones.
+    \item \textbf{Eliminación de metadatos}: se borran encabezados de identificación, \emph{timestamps}, anotaciones entre corchetes, 
+          marcas de hablante (\texttt{ENT}/\texttt{TEST}) y bloques de guiones utilizados como censura.
+    \item \textbf{Depuración de caracteres}: se conservan únicamente letras (incluidas tildes), dígitos y puntuación básica; 
+          se normalizan las elipsis y las repeticiones de signos.
+    \item \textbf{Ajuste final}: se eliminan dígitos pegados a palabras, se colapsan espacios múltiples y se convierte todo el texto a minúsculas.
+\end{enumerate}
+
+\paragraph{Resultado}
+Después de la limpieza, el texto de ejemplo se reduce a una versión clara y lista para el análisis:
+
+\begin{quote}
+\itshape
+bajo la apariencia de una democracia formal, en colombia se vivía un régimen de terror: servicios de inteligencia estatales ¿estamos hablando...? ¿a partir de qué época estamos hablando? estamos hablando ya a partir de 1985
+\end{quote}
+
+\subsection{Morfología}
+
+\subsubsection{Morfología del libro}
+
+El libro analizado es una obra de divulgación académica e histórica.  
+Para comenzar, se observa el comportamiento de los \textbf{caracteres} y las \textbf{palabras} en las secciones principales dedicadas a \emph{Mujeres} y \emph{LGBTIQ+}.  
+La siguiente tabla resume estos totales:
+
+\begin{table}[H]
+\centering
+\small
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{l l r r}
+\hline
+\textbf{Sección} & \textbf{Sección Principal} & \textbf{Total Caracteres} & \textbf{Total Palabras} \\
+\hline
+LGBTIQ+ & Los porqués de la persecución contra personas LGBTIQ+ & 33\,082  & 5\,385  \\
+LGBTIQ+ & ¿Qué pasó con lo que les pasó a las personas LGBTIQ+ & 150\,688 & 24\,994 \\
+LGBTIQ+ & ¿Qué pasó? Violencias contra las personas LGBTIQ+    & 175\,109 & 28\,638 \\
+Mujeres & ¿Por qué pasó? Dimensiones del patriarcado          & 84\,910  & 13\,796 \\
+Mujeres & ¿Qué pasó con lo que pasó?                         & 111\,837 & 18\,238 \\
+Mujeres & ¿Qué pasó? Significados y magnitudes de lo sucedido & 350\,778 & 57\,976 \\
+\hline
+\end{tabular}
+}
+\caption{Totales de caracteres y palabras por sección principal.}
+\end{table}
+
+\noindent
+En cuanto al \textbf{comportamiento global del texto}, el libro completo contiene \textbf{6 633 oraciones} y \textbf{142 272 palabras}.  
+De ese total, \textbf{82 722} son \emph{stopwords}, por lo que al eliminarlas quedan \textbf{59 550 palabras efectivas}.  
+Cada oración presenta en promedio \textbf{21.45 palabras} en el texto original, frente a un promedio de \textbf{8.98 palabras} cuando se excluyen las stopwords.
+
+El análisis gramatical muestra que, por oración, se identifican en promedio:
+\begin{itemize}
+  \item \textbf{3.10 verbos}, para un total de \textbf{20 584 verbos}.
+  \item \textbf{5.80 sustantivos}, con un total de \textbf{38 455 sustantivos}.
+  \item \textbf{1.45 adjetivos}, sumando \textbf{9 607 adjetivos}.
+  \item \textbf{1.83 pronombres}, alcanzando \textbf{12 145 pronombres}.
+  \item \textbf{0.82 adverbios}, con \textbf{5 427 adverbios} en total.
+  \item \textbf{12.47 stopwords} por oración en la versión original.
+\end{itemize}
+
+Cuando se eliminan las stopwords, la estructura cambia notablemente:  
+\begin{itemize}
+  \item El promedio de verbos desciende a \textbf{2.05} por oración, con \textbf{13 613 verbos}.
+  \item Los sustantivos mantienen un nivel alto, \textbf{5.44} por oración, para un total de \textbf{36 110}.
+  \item Los adjetivos alcanzan \textbf{1.33} por oración, con \textbf{8 795} en total.
+  \item Los pronombres casi desaparecen, con solo \textbf{0.01} por oración y \textbf{74} en total.
+  \item Los adverbios bajan a \textbf{0.10} por oración, con \textbf{657} en total.
+  \item Las stopwords se reducen a \textbf{cero}, como era de esperar.
+\end{itemize}
+
+\subsubsection{Morfología de los testimonios}
+
+El archivo \texttt{JSON} está compuesto por testimonios de personas que participaron en el conflicto armado colombiano, 
+ya sea como víctimas, victimarios o testigos directos. En cuanto al \textbf{comportamiento global del texto}, el conjunto de testimonios en formato \texttt{JSON} reúne \textbf{1 258 731 oraciones} y un total de \textbf{31 058 233 palabras}. De ellas, \textbf{21 013 394} son \emph{stopwords}, por lo que al eliminarlas permanecen \textbf{10 044 839 palabras efectivas}. Cada oración presenta en promedio \textbf{24.67 palabras} en el texto original, frente a un promedio de \textbf{7.98 palabras} cuando se excluyen las stopwords.
+
+El análisis gramatical muestra que, por oración, se identifican en promedio:
+\begin{itemize}
+  \item \textbf{4.84 verbos}, para un total de \textbf{6 086 128 verbos}.
+  \item \textbf{4.36 sustantivos}, con un total de \textbf{5 487 808 sustantivos}.
+  \item \textbf{1.11 adjetivos}, sumando \textbf{1 392 418 adjetivos}.
+  \item \textbf{3.45 pronombres}, alcanzando \textbf{4 347 229 pronombres}.
+  \item \textbf{2.02 adverbios}, con \textbf{2 545 372 adverbios} en total.
+  \item \textbf{16.69 stopwords} por oración en la versión original.
+\end{itemize}
+
+Cuando se eliminan las stopwords, la estructura cambia notablemente:
+\begin{itemize}
+  \item El promedio de verbos desciende a \textbf{2.74} por oración, con \textbf{3 454 607 verbos}.
+  \item Los sustantivos se mantienen altos, \textbf{3.99} por oración, para un total de \textbf{5 019 983}.
+  \item Los adjetivos alcanzan \textbf{0.90} por oración, con \textbf{1 134 968} en total.
+  \item Los pronombres casi desaparecen, con solo \textbf{0.02} por oración y \textbf{20 450} en total.
+  \item Los adverbios bajan a \textbf{0.22} por oración, con \textbf{282 057} en total.
+  \item Las stopwords se reducen a \textbf{cero}, como era de esperar.
+\end{itemize}
+
+\noindent
+Este panorama confirma que los testimonios constituyen un corpus de gran extensión, con una alta densidad de verbos y sustantivos que reflejan su carácter narrativo.
+
+\subsection{Textometría}
+
+El análisis de \textbf{textometría} evalúa la facilidad de lectura de los textos tanto del \textbf{libro} como de los \textbf{testimonios}. Los valores obtenidos y su interpretación según las escalas de cada índice se resumen a continuación:
+
+\begin{itemize}
+  \item \textbf{Fernández Huerta}  
+        \begin{itemize}
+            \item Libro: \textbf{84.14} — nivel \emph{fácil} (aprox. 5º grado de escolaridad).  
+            \item Testimonios: \textbf{91.54} — nivel \emph{muy fácil} (aprox. 4º grado).
+        \end{itemize}
+
+  \item \textbf{Szigriszt-Pazos (INFLESZ)}  
+        \begin{itemize}
+            \item Libro: \textbf{80.71} — lectura \emph{fácil}, adecuada para público general (\(\approx\)11 años).  
+            \item Testimonios: \textbf{88.47} — lectura \emph{muy fácil}, equivalente a cómics o revistas juveniles (\(\approx\)6–10 años).
+        \end{itemize}
+
+  \item \textbf{Gutiérrez de Polini}  
+        \begin{itemize}
+            \item Libro: \textbf{40.22} — dificultad \emph{media}, comprensible para estudiantes de secundaria (\(\approx\)12–14 años).  
+            \item Testimonios: \textbf{45.53} — ligeramente más sencillo, aún en rango de \emph{promedio escolar}.
+        \end{itemize}
+\end{itemize}
+
+En conjunto, los resultados muestran que los \textbf{testimonios} son, en promedio, \emph{más fáciles de leer} que el libro. Mientras los índices en español (Fernández Huerta y Szigriszt-Pazos) sitúan ambos textos en un nivel \textbf{fácil a muy fácil}, las escalas de Gutiérrez de Polini y Flesch —más exigentes— reflejan una \textbf{dificultad media} adecuada para lectores con educación secundaria o superior básica.
+
+\subsection{Preprocesamiento de los textos}
+
+El análisis parte del procesamiento lingüístico de texto en español. Para ello se utiliza el modelo \texttt{es\_core\_news\_sm} de \texttt{spaCy}, siguiendo estos pasos:
+
+\begin{enumerate}
+  \item \textbf{Normalización}: se convierte todo el texto a minúsculas para mantener la uniformidad.
+  \item \textbf{Tokenización}: el texto se divide en oraciones y, dentro de ellas, en palabras.
+  \item \textbf{Limpieza}: se eliminan signos de puntuación y se filtran las \emph{stopwords} en español.
+  \item \textbf{Lematización}: cada palabra restante se transforma en su lema, es decir, su forma canónica.
+  \item \textbf{Estructura final}: se obtiene una lista de listas, donde cada sublista contiene los lemas limpios de los tokens que componen cada oración.
+\end{enumerate}
+
+\section{Análisis Exploratorio del Corpus}
+
+\subsection{Frecuencia de términos}
+
+\subsubsection{Frecuencia de términos en el libro}
+
+El libro analiza cómo el conflicto armado en Colombia afectó a las \textbf{mujeres} y a la \textbf{comunidad LGBTIQ+}. Las palabras más frecuentes reflejan de forma directa esta temática. Entre los términos con mayor aparición se encuentran: \textbf{mujer}, \textbf{violencia}, \textbf{persona}, \textbf{armado}, \textbf{pasar}, \textbf{hombre}, \textbf{víctima}, \textbf{vida}, \textbf{sexual} y \textbf{cuerpo}. Cada uno de ellos se relaciona con las víctimas, los actores del conflicto y los hechos de violencia que impactaron a las mujeres en el conflicto armado.  
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{frecuencia_libro.png}
+    \caption{Top 50 de términos más frecuentes en el libro.}
+    \label{fig:frecuencia_libro}
+\end{figure}
+
+\subsubsection{Frecuencia de términos en los testimonios}
+
+En los \textbf{testimonios}, el lenguaje tiene un carácter narrativo, propio de quien cuenta una experiencia o relata un hecho. Por ello predominan \textbf{verbos de acción} y movimiento, como: \textbf{llegar}, \textbf{pasar}, \textbf{querer}, \textbf{venir}, \textbf{salir} y \textbf{creer}. También se observan numerosos términos que hacen referencia a \textbf{tiempo} y \textbf{lugar}, coherentes con la intención de ubicar los acontecimientos narrados.  
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{frecuencia_testimonios.png}
+    \caption{Top 50 de términos más frecuentes en los testimonios.}
+    \label{fig:frecuencia_testimonios}
+\end{figure}
+
+\textbf{Nota:} Durante el análisis se identificaron términos ajenos al contenido principal, como la palabra \textbf{``test''} y la abreviatura \textbf{``pa''} (usada en lugar de ``para'').  Ambas se incorporaron a la lista de \emph{stopwords} para evitar que afectaran el conteo de frecuencia.
+
+\subsection{Nube de palabras}
+
+\noindent
+La \textbf{nube de palabras} permite identificar de forma visual los términos con mayor frecuencia en el texto.  En el caso del \textbf{libro}, esta representación resalta de inmediato las palabras clave asociadas al impacto del conflicto armado en las mujeres.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{nube_libro.png}
+    \caption{Nube de palabras del libro.}
+    \label{fig:nube_libro}
+\end{figure}
+
+\noindent
+Por su parte, la \textbf{nube de palabras de los testimonios} refleja un lenguaje más narrativo donde predominan verbos y expresiones que sitúan en el tiempo y el espacio.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{nube_testimonios.png}
+    \caption{Nube de palabras de los testimonios.}
+    \label{fig:nube_testimonios}
+\end{figure}
+
+\subsection{Diversidad léxica}
+
+La \textbf{diversidad léxica} mide la variedad de vocabulario en un texto.  
+Para evaluarla se emplearon dos métricas:
+
+\begin{itemize}
+    \item \textbf{TTR (Type–Token Ratio)}: relación entre el número de tipos únicos y el total de palabras.  
+          Un valor más alto indica mayor diversidad, aunque es sensible a la longitud del texto.
+    \item \textbf{RTTR (Root TTR)}: ajusta el cálculo tomando la raíz cuadrada del número de tokens, 
+          lo que reduce el sesgo provocado por textos muy largos.
+\end{itemize}
+
+Los resultados obtenidos son los siguientes:
+\begin{itemize}
+    \item \textbf{Libro}  
+          \begin{itemize}
+              \item Tokens totales: \textbf{57\,846}  
+              \item Tipos únicos: \textbf{8\,615}  
+              \item TTR: \textbf{0.1489}  
+              \item RTTR: \textbf{35.82}
+          \end{itemize}
+
+    \item \textbf{Testimonios}  
+          \begin{itemize}
+              \item Tokens totales: \textbf{9\,464\,382}  
+              \item Tipos únicos: \textbf{116\,107}  
+              \item TTR: \textbf{0.0123}  
+              \item RTTR: \textbf{37.74}
+          \end{itemize}
+\end{itemize}
+
+El libro presenta un \textbf{TTR} mucho mayor que el de los testimonios, lo que indica una \emph{mayor diversidad de vocabulario en relación con su extensión}.  Sin embargo, el \textbf{RTTR} es similar en ambos casos (35.82 frente a 37.74), lo que sugiere que, una vez corregido el efecto de la longitud, \textbf{la riqueza léxica global de los dos corpus es comparable}.
+
+\subsection{Comparación de patrones léxicos}
+
+\noindent
+El \textbf{libro} presenta un estilo \textbf{estructurado, conceptual y especializado}, enfocado en la explicación y el análisis de los hechos. En contraste, los \textbf{testimonios} transmiten la \textbf{inmediatez de la experiencia} y la \textbf{oralidad}, priorizando la vivencia personal y el movimiento narrativo.  
+
+\noindent
+A pesar de las diferencias en \textbf{extensión} y \textbf{enfoque}, el ajuste por longitud revela que ambos corpus poseen una \textbf{riqueza léxica global similar}. Esto demuestra que, aunque la \textbf{forma} y el \textbf{tono} divergen, la \textbf{profundidad expresiva del lenguaje} se mantiene en los dos conjuntos de textos.
+
+\end{document}
