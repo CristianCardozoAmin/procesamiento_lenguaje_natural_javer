@@ -206,3 +206,6 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 taller_ir/data/input/entrevistas_all_2023-03-21_14-24_05.json
+taller_ir/data/output/testimonios_cev_preprocesado.zip
+taller_ir/data/output/testimonios_cev_preprocesado.csv
+taller_ir/data/output/libro_cev_preprocesado.csv
