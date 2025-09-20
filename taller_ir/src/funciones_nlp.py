@@ -288,7 +288,13 @@ def preprocesar_texto(texto: str) -> list:
         from spacy.cli import download
         download("es_core_news_sm")
         nlp = spacy.load("es_core_news_sm")
-    
+
+    stopwords_extra = ['test','pa']
+
+    # Unir stop words de spaCy con las personalizadas
+    stopwords_total = set(STOP_WORDS)
+    if stopwords_extra:
+        stopwords_total.update({w.lower() for w in stopwords_extra})
     # Procesar el texto
     doc = nlp(texto.lower())  # pasamos todo a minúsculas
     
@@ -298,8 +304,19 @@ def preprocesar_texto(texto: str) -> list:
         tokens_limpios = [
             token.lemma_
             for token in sent
-            if token.is_alpha and token.lemma_ not in STOP_WORDS
+            if token.is_alpha and token.lemma_ not in stopwords_total
         ]
         oraciones_procesadas.append(tokens_limpios)
     
     return oraciones_procesadas
+
+#############################################################################
+# Índices de legibilidad
+#############################################################################
+def print_indices_es(texto: str) -> None:
+    from textstat import textstat
+    print("=== ÍNDICES DE LEGIBILIDAD (ES) ===")
+    print("Fernández Huerta:", round(textstat.fernandez_huerta(texto), 2))
+    print("Szigriszt-Pazos (INFLESZ):", round(textstat.szigriszt_pazos(texto), 2))
+    print("Gutiérrez de Polini:", round(textstat.gutierrez_polini(texto), 2))
+    print("Flesch Reading Ease (referencial):", round(textstat.flesch_reading_ease(texto), 2))
